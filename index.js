@@ -21,13 +21,58 @@ db.serialize(function () {
 	);
 });
 
-db.close();
+const createUser = (email, password) => {
+	db.serialize(() => {
+		db.run("INSERT INTO users(email, password) VALUES (?, ?)", [
+			email,
+			password,
+		]);
+	});
+};
+
+const listUsers = () => {
+	db.serialize(() => {
+		db.each(
+			"SELECT rowid AS id, email, password FROM users",
+			(err, row) => {
+				console.log(
+					row.id +
+						":" +
+						row.email +
+						" " +
+						row.password
+				);
+			}
+		);
+	});
+};
+
+const findUser = (email) => {
+	db.serialize(() => {
+		db.get(
+			`SELECT email, password FROM users WHERE email = ?`,
+			[email],
+			(err, row) => {
+				if (err) {
+					console.log(err);
+				}
+
+				if (row) {
+					console.log(row);
+				} else {
+					console.log("not found");
+				}
+			}
+		);
+	});
+};
 
 const app = express();
 
 app.use(express.json());
 
 app.get("/", function requestHandler(req, res) {
+	listUsers();
 	res.send("Hello, World!");
 });
 
@@ -41,6 +86,7 @@ app.post("/signup", function (req, res) {
 				if (err) {
 					res.status(400).send({ msg: "Error" });
 				} else {
+					createUser(email, password);
 					res.send({
 						msg: "success",
 						token,
@@ -53,6 +99,8 @@ app.post("/signup", function (req, res) {
 });
 
 app.post("/signin", function (req, res) {
+	const { email, password } = req.body;
+	findUser(email);
 	res.send(req.body);
 });
 
