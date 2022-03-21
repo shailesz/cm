@@ -1,70 +1,100 @@
 const express = require("express");
+const res = require("express/lib/response");
 var sqlite3 = require("sqlite3").verbose();
 var db = new sqlite3.Database(":memory:");
 const jwt = require("jsonwebtoken");
 
 db.serialize(function () {
-	db.run("CREATE TABLE users (email TEXT, password TEXT)");
+  db.run(
+    "CREATE TABLE Users (UserId INTEGER PRIMARY KEY, Email TEXT, Password TEXT)"
+  );
 
-	db.run("INSERT INTO users(email, password) VALUES (?, ?)", [
-		"gmail@gmail.com",
-		"password0",
-	]);
+  db.run(
+    "CREATE TABLE Tokens(TokenId INTEGER PRIMARY KEY, UserId, Token, FOREIGN KEY(UserId) REFERENCES Users(UserId))"
+  );
 
-	db.each(
-		"SELECT rowid AS id, email, password FROM users",
-		function (err, row) {
-			console.log(
-				row.id + ": " + row.email + " " + row.password
-			);
-		}
-	);
+  db.run("INSERT INTO Users(Email, Password) VALUES (?, ?)", [
+    "gmail@gmail.com",
+    "password0",
+  ]);
+
+  db.each(
+    "SELECT rowid AS UserId, Email, Password FROM Users",
+    function (err, row) {
+      console.log(row.UserId + ": " + row.Email + " " + row.Password);
+    }
+  );
 });
 
-const createUser = (email, password) => {
-	db.serialize(() => {
-		db.run("INSERT INTO users(email, password) VALUES (?, ?)", [
-			email,
-			password,
-		]);
-	});
+const createUser = (email, password, res) => {
+  db.serialize(() => {
+    db.run(
+      "INSERT INTO Users(Email, Password) VALUES (?, ?)",
+      [email, password],
+      function (err, row) {
+        if (err) {
+          return res
+            .status(500)
+            .send({ status: 500, message: "something went wrong", data: {} });
+        }
+        const token = jwt.sign(this.lastID, "key_secret");
+
+        return res
+          .status(200)
+          .send({ status: 200, message: "ok", data: { token } });
+      }
+    );
+  });
 };
 
-const listUsers = () => {
-	db.serialize(() => {
-		db.each(
-			"SELECT rowid AS id, email, password FROM users",
-			(err, row) => {
-				console.log(
-					row.id +
-						":" +
-						row.email +
-						" " +
-						row.password
-				);
-			}
-		);
-	});
+const handleError = (err) => {
+  return {
+    status: err.status || 500,
+    message: err.message || "something went wrong",
+    data: "",
+  };
 };
 
-const findUser = (email) => {
-	db.serialize(() => {
-		db.get(
-			`SELECT email, password FROM users WHERE email = ?`,
-			[email],
-			(err, row) => {
-				if (err) {
-					console.log(err);
-				}
+const auth = (email, password, res) => {
+  db.serialize(() => {
+    db.get(
+      `SELECT UserId, Email, Password FROM Users WHERE Email = ? AND Password = ?`,
+      [email, password],
+      (err, { UserId }) => {
+        if (err) {
+          const result = { ...handleError(err) };
+          return res.status(result.status).send(...result);
+        }
 
-				if (row) {
-					console.log(row);
-				} else {
-					console.log("not found");
-				}
-			}
-		);
-	});
+        if (UserId) {
+          const token = jwt.sign(UserId, "key_secret");
+          return res
+            .status(200)
+            .send({ status: 200, message: "ok", data: { token } });
+        } else {
+          result = {
+            ...handleError({
+              status: 401,
+              message: "authentication error",
+              data: "",
+            }),
+          };
+          return res.status(result.status).send(...result);
+        }
+      }
+    );
+  });
+};
+
+const verifyToken = (req, res, next) => {
+  const authHeader = req.headers["authorization"];
+  const token = authHeader && authHeader.split(" ")[1];
+  if (token == null) return res.sendStatus(403);
+  jwt.verify(token, "key_secret", (err, user) => {
+    if (err) return res.sendStatus(404);
+    req.user = user;
+    next();
+  });
 };
 
 const app = express();
@@ -72,36 +102,22 @@ const app = express();
 app.use(express.json());
 
 app.get("/", function requestHandler(req, res) {
-	listUsers();
-	res.send("Hello, World!");
+  res.send("Hello, World!");
 });
 
 app.post("/signup", function (req, res) {
-	const { email, password } = req.body;
-	jwt.sign({ data: { email, password } }, "key_secret", (err, token) => {
-		if (err) {
-			res.status(400).send({ msg: "Error" });
-		} else {
-			jwt.verify(token, "key_secret", (err, decoded) => {
-				if (err) {
-					res.status(400).send({ msg: "Error" });
-				} else {
-					createUser(email, password);
-					res.send({
-						msg: "success",
-						token,
-						decoded,
-					});
-				}
-			});
-		}
-	});
+  const { email, password } = req.body;
+
+  createUser(email, password, res);
 });
 
 app.post("/signin", function (req, res) {
-	const { email, password } = req.body;
-	findUser(email);
-	res.send(req.body);
+  const { email, password } = req.body;
+  auth(email, password, res);
 });
+
+app.get("/contacts");
+
+app.post("/contacts");
 
 const server = app.listen(3000);
