@@ -14,7 +14,12 @@ db.serialize(function () {
 	);
 
 	db.run(
-		"CREATE TABLE Contacts(ContactId INTEGER PRIMARY KEY, Name TEXT, Phone INTEGER, PHOTOGRAPH TEXT)"
+		"CREATE TABLE Contacts(ContactId INTEGER PRIMARY KEY, Name TEXT, Phone INTEGER, Photograph TEXT)"
+	);
+
+	db.run(
+		"INSERT INTO Contacts(Name, Phone, Photograph) VALUES (?, ?, ?)",
+		["SAILESH", 1231231231, "photola"]
 	);
 
 	db.run("INSERT INTO Users(Email, Password) VALUES (?, ?)", [
@@ -69,16 +74,15 @@ const createContact = (name, phone, photograph, res) => {
 		db.run(
 			"INSERT INTO Contacts(Name, Phone, Photograph) VALUES (?, ?, ?)",
 			[name, phone, photograph],
-
 			function (err, row) {
 				if (err) {
-					return res.status(500).send({
+					res.status(500).send({
 						status: 500,
 						message: "something went wrong",
 						data: {},
 					});
 				}
-				return res.status(200).send({
+				res.status(200).send({
 					status: 200,
 					message: "ok",
 					data: {},
@@ -147,6 +151,23 @@ const verifyToken = (req, res, next) => {
 	});
 };
 
+const getContacts = () => {
+	return new Promise((resolve, reject) => {
+		db.serialize(() => {
+			db.all(
+				"SELECT Name, Phone, Photograph FROM Contacts",
+				[],
+				(err, rows) => {
+					if (err) {
+						reject(err);
+					}
+					resolve(rows);
+				}
+			);
+		});
+	});
+};
+
 const app = express();
 
 app.use(express.json());
@@ -166,8 +187,15 @@ app.post("/signin", function (req, res) {
 	auth(email, password, res);
 });
 
-app.get("/contacts");
+app.get("/contacts", function (req, res) {
+	let allContacts = getContacts().then((results) =>
+		res.send({ results })
+	);
+});
 
-app.post("/contacts");
+app.post("/contacts", function (req, res) {
+	const { name, phone, photograph } = req.body;
+	createContact(name, phone, photograph, res);
+});
 
 const server = app.listen(3000);
