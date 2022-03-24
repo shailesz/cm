@@ -187,15 +187,15 @@ app.post("/signin", function (req, res) {
 	auth(email, password, res);
 });
 
-app.get("/contacts", function (req, res) {
-	let allContacts = getContacts().then((results) =>
+app.get("/contacts", verifyToken, function (req, res) {
+	const allContacts = getContacts().then((results) =>
 		res.send({ results })
 	);
 });
 
-app.post("/contacts", function (req, res) {
+app.post("/contacts", verifyToken, function (req, res) {
 	const { name, phone, photograph } = req.body;
 	createContact(name, phone, photograph, res);
 });
 
-const server = app.listen(3000);
+const server = app.listen(4000);
