@@ -4,6 +4,9 @@ var sqlite3 = require("sqlite3").verbose();
 var db = new sqlite3.Database("contacts.db");
 const jwt = require("jsonwebtoken");
 const cors = require("cors");
+const multer = require("multer");
+const admin = require("firebase-admin");
+const serviceAccount = require("./key.json");
 
 db.serialize(function () {
   db.run(
@@ -44,6 +47,12 @@ db.serialize(function () {
   // );
 });
 
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+  storageBucket: "conman-3497a.appspot.com",
+});
+const bucket = admin.storage().bucket();
+
 const createUser = (email, password, res) => {
   db.serialize(() => {
     db.run(
@@ -70,27 +79,37 @@ const createUser = (email, password, res) => {
 };
 
 const createContact = (name, phone, photograph, userId, res) => {
-  console.log(userId);
-  db.serialize(() => {
-    db.run(
-      "INSERT INTO Contacts(Name, Phone, Photograph, UserId) VALUES (?, ?, ?, ?)",
-      [name, phone, photograph, parseInt(userId)],
-      function (err, row) {
-        if (err) {
-          res.status(500).send({
-            status: 500,
-            message: "something went wrong",
-            data: {},
-          });
-        }
-        res.status(200).send({
-          status: 200,
-          message: "ok",
-          data: {},
-        });
-      }
-    );
-  });
+  bucket
+    .upload(photograph.path, {
+      destination: Date.now() + "-" + photograph.filename,
+    })
+    .then(([first, { mediaLink }]) => {
+      db.serialize(() => {
+        db.run(
+          "INSERT INTO Contacts(Name, Phone, Photograph, UserId) VALUES (?, ?, ?, ?)",
+          [name, phone, mediaLink, parseInt(userId)],
+          function (err, row) {
+            if (err) {
+              res.status(500).send({
+                status: 500,
+                message: "something went wrong",
+                data: {},
+              });
+            }
+            res.status(200).send({
+              status: 200,
+              message: "ok",
+              data: {
+                name,
+                phone,
+                photograph: mediaLink,
+                contactId: this.lastID,
+              },
+            });
+          }
+        );
+      });
+    });
 };
 
 const handleError = (err) => {
@@ -148,7 +167,7 @@ const getContacts = (userId) => {
   return new Promise((resolve, reject) => {
     db.serialize(() => {
       db.all(
-        `SELECT Name, Phone, Photograph FROM Contacts WHERE UserId = ${parseInt(
+        `SELECT Name AS name, Phone AS phone, Photograph AS photograph FROM Contacts WHERE UserId = ${parseInt(
           userId
         )}`,
         (err, rows) => {
@@ -162,11 +181,22 @@ const getContacts = (userId) => {
   });
 };
 
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, "./images");
+  },
+  filename: (req, file, cb) => {
+    cb(null, file.originalname);
+  },
+});
+
 const app = express();
 
 app.use(express.json());
 
 app.use(cors());
+
+const upload = multer({ storage: storage });
 
 app.get("/", function requestHandler(req, res) {
   res.send("Hello, World!");
@@ -187,10 +217,15 @@ app.get("/contacts", verifyToken, function (req, res) {
   getContacts(req.user).then((results) => res.send({ results }));
 });
 
-app.post("/contacts", verifyToken, function (req, res) {
-  const { name, phone, photograph } = req.body;
-  console.log(name, phone, photograph);
-  createContact(name, phone, photograph, req.user, res);
-});
+app.post(
+  "/contacts",
+  verifyToken,
+  upload.single("images"),
+  function (req, res) {
+    const { name, phone } = req.body;
+    const photograph = req.file;
+    createContact(name, phone, photograph, req.user, res);
+  }
+);
 
 const server = app.listen(4000);
