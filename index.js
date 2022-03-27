@@ -1,47 +1,47 @@
 const express = require("express");
 const res = require("express/lib/response");
 var sqlite3 = require("sqlite3").verbose();
-var db = new sqlite3.Database(":memory:");
+var db = new sqlite3.Database("contacts.db");
 const jwt = require("jsonwebtoken");
 const cors = require("cors");
 
 db.serialize(function () {
   db.run(
-    "CREATE TABLE Users (UserId INTEGER PRIMARY KEY, Email TEXT, Password TEXT)"
+    "CREATE TABLE IF NOT EXISTS Users (UserId INTEGER PRIMARY KEY, Email TEXT, Password TEXT)"
   );
 
   db.run(
-    "CREATE TABLE Tokens(TokenId INTEGER PRIMARY KEY, UserId, Token, FOREIGN KEY(UserId) REFERENCES Users(UserId))"
+    "CREATE TABLE IF NOT EXISTS Tokens(TokenId INTEGER PRIMARY KEY, UserId, Token, FOREIGN KEY(UserId) REFERENCES Users(UserId))"
   );
 
   db.run(
-    "CREATE TABLE Contacts(ContactId INTEGER PRIMARY KEY, Name TEXT, Phone INTEGER, Photograph TEXT, UserId, FOREIGN KEY(UserId) REFERENCES Users(UserId))"
+    "CREATE TABLE IF NOT EXISTS Contacts(ContactId INTEGER PRIMARY KEY, Name TEXT, Phone INTEGER, Photograph TEXT, UserId, FOREIGN KEY(UserId) REFERENCES Users(UserId))"
   );
 
-  db.run("INSERT INTO Users(Email, Password) VALUES (?, ?)", [
-    "gmail@gmail.com",
-    "password0",
-  ]);
+  // db.run("INSERT INTO Users(Email, Password) VALUES (?, ?)", [
+  //   "gmail@gmail.com",
+  //   "password0",
+  // ]);
 
-  db.run(
-    "INSERT INTO Contacts(Name, Phone, Photograph, UserId) VALUES (?, ?, ?, ?)",
-    ["SAILESH", 1231231231, "photola", 1]
-  );
+  // db.run(
+  //   "INSERT INTO Contacts(Name, Phone, Photograph, UserId) VALUES (?, ?, ?, ?)",
+  //   ["SAILESH", 1231231231, "photola", 1]
+  // );
 
-  db.each(
-    "SELECT rowid AS UserId, Email, Password FROM Users",
-    function (err, row) {
-      console.log(row.UserId + ": " + row.Email + " " + row.Password);
-    }
-  );
-  db.each(
-    "SELECT rowid AS ContactId, Name, Phone, UserId FROM Contacts",
-    function (err, row) {
-      console.log(
-        row.ContactId + ": " + row.Name + " " + row.Phone + " " + row.UserId
-      );
-    }
-  );
+  // db.each(
+  //   "SELECT rowid AS UserId, Email, Password FROM Users",
+  //   function (err, row) {
+  //     console.log(row.UserId + ": " + row.Email + " " + row.Password);
+  //   }
+  // );
+  // db.each(
+  //   "SELECT rowid AS ContactId, Name, Phone, UserId FROM Contacts",
+  //   function (err, row) {
+  //     console.log(
+  //       row.ContactId + ": " + row.Name + " " + row.Phone + " " + row.UserId
+  //     );
+  //   }
+  // );
 });
 
 const createUser = (email, password, res) => {
@@ -69,11 +69,12 @@ const createUser = (email, password, res) => {
   });
 };
 
-const createContact = (name, phone, photograph, res) => {
+const createContact = (name, phone, photograph, userId, res) => {
+  console.log(userId);
   db.serialize(() => {
     db.run(
-      "INSERT INTO Contacts(Name, Phone, Photograph) VALUES (?, ?, ?)",
-      [name, phone, photograph],
+      "INSERT INTO Contacts(Name, Phone, Photograph, UserId) VALUES (?, ?, ?, ?)",
+      [name, phone, photograph, parseInt(userId)],
       function (err, row) {
         if (err) {
           res.status(500).send({
@@ -143,12 +144,13 @@ const verifyToken = (req, res, next) => {
   });
 };
 
-const getContacts = () => {
+const getContacts = (userId) => {
   return new Promise((resolve, reject) => {
     db.serialize(() => {
       db.all(
-        "SELECT Name, Phone, Photograph FROM Contacts",
-        [],
+        `SELECT Name, Phone, Photograph FROM Contacts WHERE UserId = ${parseInt(
+          userId
+        )}`,
         (err, rows) => {
           if (err) {
             reject(err);
@@ -182,13 +184,13 @@ app.post("/signin", function (req, res) {
 });
 
 app.get("/contacts", verifyToken, function (req, res) {
-  console.log(req.user);
-  const allContacts = getContacts().then((results) => res.send({ results }));
+  getContacts(req.user).then((results) => res.send({ results }));
 });
 
 app.post("/contacts", verifyToken, function (req, res) {
   const { name, phone, photograph } = req.body;
-  createContact(name, phone, photograph, res);
+  console.log(name, phone, photograph);
+  createContact(name, phone, photograph, req.user, res);
 });
 
 const server = app.listen(4000);
