@@ -14,37 +14,8 @@ db.serialize(function () {
   );
 
   db.run(
-    "CREATE TABLE IF NOT EXISTS Tokens(TokenId INTEGER PRIMARY KEY, UserId, Token, FOREIGN KEY(UserId) REFERENCES Users(UserId))"
+    "CREATE TABLE IF NOT EXISTS Contacts(ContactId INTEGER PRIMARY KEY, Name TEXT, Phone INTEGER, Photograph TEXT, UserId, Favourite BOOLEAN NOT NULL CHECK (Favourite IN (0, 1)), FOREIGN KEY(UserId) REFERENCES Users(UserId))"
   );
-
-  db.run(
-    "CREATE TABLE IF NOT EXISTS Contacts(ContactId INTEGER PRIMARY KEY, Name TEXT, Phone INTEGER, Photograph TEXT, UserId, FOREIGN KEY(UserId) REFERENCES Users(UserId))"
-  );
-
-  // db.run("INSERT INTO Users(Email, Password) VALUES (?, ?)", [
-  //   "gmail@gmail.com",
-  //   "password0",
-  // ]);
-
-  // db.run(
-  //   "INSERT INTO Contacts(Name, Phone, Photograph, UserId) VALUES (?, ?, ?, ?)",
-  //   ["SAILESH", 1231231231, "photola", 1]
-  // );
-
-  // db.each(
-  //   "SELECT rowid AS UserId, Email, Password FROM Users",
-  //   function (err, row) {
-  //     console.log(row.UserId + ": " + row.Email + " " + row.Password);
-  //   }
-  // );
-  // db.each(
-  //   "SELECT rowid AS ContactId, Name, Phone, UserId FROM Contacts",
-  //   function (err, row) {
-  //     console.log(
-  //       row.ContactId + ": " + row.Name + " " + row.Phone + " " + row.UserId
-  //     );
-  //   }
-  // );
 });
 
 admin.initializeApp({
@@ -86,17 +57,17 @@ const createContact = (name, phone, photograph, userId, res) => {
     .then(([first, { mediaLink }]) => {
       db.serialize(() => {
         db.run(
-          "INSERT INTO Contacts(Name, Phone, Photograph, UserId) VALUES (?, ?, ?, ?)",
-          [name, phone, mediaLink, parseInt(userId)],
+          "INSERT INTO Contacts(Name, Phone, Photograph, UserId, Favourite) VALUES (?, ?, ?, ?, ?)",
+          [name, phone, mediaLink, parseInt(userId), 0],
           function (err, row) {
             if (err) {
-              res.status(500).send({
+              return res.status(500).send({
                 status: 500,
                 message: "something went wrong",
                 data: {},
               });
             }
-            res.status(200).send({
+            return res.status(200).send({
               status: 200,
               message: "ok",
               data: {
@@ -110,6 +81,88 @@ const createContact = (name, phone, photograph, userId, res) => {
         );
       });
     });
+};
+
+const deleteContact = (contactId, user, res) => {
+  db.serialize(() => {
+    db.run(
+      `DELETE FROM Contacts WHERE ContactId = ${parseInt(
+        contactId
+      )} AND UserID = ${parseInt(user)}`,
+      function (err, row) {
+        if (err) {
+          return res.status(500).send({
+            status: 500,
+            message: "something went wrong",
+            data: {},
+          });
+        }
+        return res.status(200).send({
+          status: 200,
+          message: "ok",
+          data: {},
+        });
+      }
+    );
+  });
+};
+
+const updateContact = (contactId, userId, { name, phone, photograph }, res) => {
+  bucket
+    .upload(photograph.path, {
+      destination: Date.now() + "-" + photograph.filename,
+    })
+    .then(([first, { mediaLink }]) => {
+      db.serialize(() => {
+        db.run(
+          `UPDATE Contacts SET Name = "${name}", Phone = ${phone}, Photograph = "${mediaLink}" WHERE ContactId = ${contactId} AND UserId = ${userId}`,
+          function (err, row) {
+            if (err) {
+              return res.status(500).send({
+                status: 500,
+                message: "something went wrong",
+                data: { err },
+              });
+            }
+            return res.status(200).send({
+              status: 200,
+              message: "ok",
+              data: {
+                name,
+                phone,
+                photograph: mediaLink,
+                contactId,
+              },
+            });
+          }
+        );
+      });
+    });
+};
+
+const updateFavourite = (contactId, userId, favourite, res) => {
+  db.serialize(() => {
+    db.run(
+      `UPDATE Contacts SET Favourite = ${favourite} WHERE ContactId = ${contactId} AND UserId = ${userId}`,
+      function (err, row) {
+        if (err) {
+          return res.status(500).send({
+            status: 500,
+            message: "something went wrong",
+            data: { err },
+          });
+        }
+        return res.status(200).send({
+          status: 200,
+          message: "ok",
+          data: {
+            contactId,
+            favourite,
+          },
+        });
+      }
+    );
+  });
 };
 
 const handleError = (err) => {
@@ -167,7 +220,7 @@ const getContacts = (userId) => {
   return new Promise((resolve, reject) => {
     db.serialize(() => {
       db.all(
-        `SELECT Name AS name, Phone AS phone, Photograph AS photograph FROM Contacts WHERE UserId = ${parseInt(
+        `SELECT ContactId AS contactId, Name AS name, Phone AS phone, Photograph AS photograph, Favourite as favourite FROM Contacts WHERE UserId = ${parseInt(
           userId
         )}`,
         (err, rows) => {
@@ -227,5 +280,25 @@ app.post(
     createContact(name, phone, photograph, req.user, res);
   }
 );
+
+app.delete("/contacts/:id", verifyToken, (req, res) => {
+  const { id } = req.params;
+
+  deleteContact(id, req.user, res);
+});
+
+app.put("/contacts/:id", verifyToken, upload.single("images"), (req, res) => {
+  const { id } = req.params;
+  const photograph = req.file;
+
+  updateContact(id, req.user, { ...req.body, photograph }, res);
+});
+
+app.put("/favourites/:id", verifyToken, (req, res) => {
+  const { id } = req.params;
+  const { favourite } = req.body;
+
+  updateFavourite(id, req.user, favourite, res);
+});
 
 const server = app.listen(4000);
