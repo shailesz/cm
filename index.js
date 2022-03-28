@@ -6,8 +6,7 @@ const jwt = require("jsonwebtoken");
 const cors = require("cors");
 const multer = require("multer");
 const admin = require("firebase-admin");
-const serviceAccount = require("./key.json");
-
+require("dotenv").config();
 db.serialize(function () {
   db.run(
     "CREATE TABLE IF NOT EXISTS Users (UserId INTEGER PRIMARY KEY, Email TEXT, Password TEXT)"
@@ -19,21 +18,25 @@ db.serialize(function () {
 });
 
 admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
-  storageBucket: "conman-3497a.appspot.com",
+  credential: admin.credential.cert({
+    projectId: process.env.PROJECT_ID,
+    clientEmail: process.env.CLIENT_EMAIL,
+    privateKey: process.env.PRIVATE_KEY,
+  }),
+  storageBucket: process.env.STORAGE_BUCKET,
 });
 const bucket = admin.storage().bucket();
 
 const createUser = (email, password, res) => {
   db.serialize(() => {
     db.run(
-      "INSERT INTO Users(Email, Password) VALUES (?, ?)",
+      `INSERT INTO Users(Email, Password) VALUES (?, ?) WHERE NOT EXISTS(SELECT 1 FROM Users WHERE Email=${email})`,
       [email, password],
       function (err, row) {
         if (err) {
-          return res.status(500).send({
-            status: 500,
-            message: "something went wrong",
+          return res.status(409).send({
+            status: 409,
+            message: "user already exists",
             data: {},
           });
         }
@@ -54,7 +57,7 @@ const createContact = (name, phone, photograph, userId, res) => {
     .upload(photograph.path, {
       destination: Date.now() + "-" + photograph.filename,
     })
-    .then(([first, { mediaLink }]) => {
+    .then(([_, { mediaLink }]) => {
       db.serialize(() => {
         db.run(
           "INSERT INTO Contacts(Name, Phone, Photograph, UserId, Favourite) VALUES (?, ?, ?, ?, ?)",
@@ -175,13 +178,15 @@ const handleError = (err) => {
 
 const auth = (email, password, res) => {
   db.serialize(() => {
-    db.get(
-      `SELECT UserId, Email, Password FROM Users WHERE Email = ? AND Password = ?`,
+    db.run(
+      `SELECT UserId,Email FROM Users WHERE Email="saileshkarki@lftechnology.com"`,
       [email, password],
       (err, values) => {
         if (err) {
           const result = { ...handleError(err) };
-          return res.status(result.status).send(...result);
+          return res
+            .status(401)
+            .send({ status: 401, message: "invalid credentials", data: {} });
         }
 
         if (values) {
