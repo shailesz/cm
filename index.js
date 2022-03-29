@@ -7,6 +7,7 @@ const cors = require("cors");
 const multer = require("multer");
 const admin = require("firebase-admin");
 require("dotenv").config();
+console.log("app started");
 db.serialize(function () {
   db.run(
     "CREATE TABLE IF NOT EXISTS Users (UserId INTEGER PRIMARY KEY, Email TEXT, Password TEXT)"
@@ -339,3 +340,4 @@ app.get("/user", verifyToken, (req, res) => {
 });
 
 const server = app.listen(process.env.PORT || 4000);
+console.log("server started on port:: ", process.env.PORT || 4000);
