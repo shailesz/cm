@@ -10,7 +10,7 @@ require("dotenv").config();
 
 db.serialize(function () {
   db.run(
-    "CREATE TABLE IF NOT EXISTS Users (UserId INTEGER PRIMARY KEY, Email TEXT, Password TEXT)"
+    "CREATE TABLE IF NOT EXISTS Users (UserId INTEGER PRIMARY KEY, Email TEXT UNIQUE, Password TEXT)"
   );
 
   db.run(
@@ -30,29 +30,39 @@ const bucket = admin.storage().bucket();
 
 const createUser = (email, password, res) => {
   db.serialize(() => {
-    db.run(
-      `INSERT INTO Users(Email, Password) SELECT "${email}", "${password}" WHERE NOT EXISTS (SELECT * FROM Users WHERE Email="${email}")`,
-      [],
-      function (err, row) {
-        if (err) {
-          return res.status(409).send({
-            status: 409,
-            message: "user already exists",
-            data: {},
-          });
-        }
-        const token = jwt.sign(
-          { userId: this.lastID, email: email },
-          "key_secret"
-        );
-
-        return res.status(200).send({
-          status: 200,
-          message: "ok",
-          data: { token },
+    db.get(`SELECT 1 FROM Users WHERE Email="${email}"`, [], (err, row) => {
+      if (row) {
+        return res.status(409).send({
+          status: 409,
+          message: "user already exists",
+          data: {},
         });
+      } else {
+        db.run(
+          `INSERT INTO Users(Email, Password) VALUES(?, ?)`,
+          [email, password],
+          function (err, row) {
+            if (err) {
+              return res.status(500).send({
+                status: 500,
+                message: "something went wrong",
+                data: {},
+              });
+            }
+            const token = jwt.sign(
+              { userId: this.lastID, email: email },
+              "key_secret"
+            );
+
+            return res.status(200).send({
+              status: 200,
+              message: "ok",
+              data: { token },
+            });
+          }
+        );
       }
-    );
+    });
   });
 };
 
