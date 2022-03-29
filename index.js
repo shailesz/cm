@@ -284,11 +284,7 @@ const app = express();
 
 app.use(express.json());
 
-const corsOptions = {
-  origin: ["*", "URL ALLOWED"],
-};
-
-app.use(cors(corsOptions));
+app.use(cors());
 
 const upload = multer({ storage: storage });
 
