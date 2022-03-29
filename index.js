@@ -30,8 +30,8 @@ const bucket = admin.storage().bucket();
 const createUser = (email, password, res) => {
   db.serialize(() => {
     db.run(
-      `INSERT INTO Users(Email, Password) VALUES (?, ?) WHERE NOT EXISTS(SELECT 1 FROM Users WHERE Email=${email})`,
-      [email, password],
+      `INSERT INTO Users(Email, Password) SELECT "${email}", "${password}" WHERE NOT EXISTS (SELECT * FROM Users WHERE Email="${email}")`,
+      [],
       function (err, row) {
         if (err) {
           return res.status(409).send({
@@ -178,33 +178,30 @@ const handleError = (err) => {
 
 const auth = (email, password, res) => {
   db.serialize(() => {
-    db.run(
-      `SELECT UserId,Email FROM Users WHERE Email="saileshkarki@lftechnology.com"`,
-      [email, password],
-      (err, values) => {
-        if (err) {
-          const result = { ...handleError(err) };
-          return res
-            .status(401)
-            .send({ status: 401, message: "invalid credentials", data: {} });
-        }
-
-        if (values) {
-          const token = jwt.sign(values.UserId, "key_secret");
+    db.get(
+      `SELECT UserId FROM Users WHERE Email="${email}" AND Password="${password}"`,
+      [],
+      (err, row) => {
+        if (row) {
+          const token = jwt.sign(row.UserId, "key_secret");
           return res.status(200).send({
             status: 200,
             message: "ok",
             data: { token },
           });
-        } else {
-          result = {
-            ...handleError({
-              status: 401,
-              message: "authentication error",
-            }),
-          };
-          return res.status(result.status).send(result);
+        } else if (err) {
+          return res
+            .status(500)
+            .send({ status: 500, message: "something went wrong", data: {} });
         }
+
+        result = {
+          ...handleError({
+            status: 401,
+            message: "invalid credentials",
+          }),
+        };
+        return res.status(result.status).send(result);
       }
     );
   });
@@ -268,6 +265,7 @@ app.post("/signup", function (req, res) {
 
 app.post("/signin", function (req, res) {
   const { email, password } = req.body;
+
   auth(email, password, res);
 });
 
