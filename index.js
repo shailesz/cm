@@ -40,7 +40,10 @@ const createUser = (email, password, res) => {
             data: {},
           });
         }
-        const token = jwt.sign(this.lastID, "key_secret");
+        const token = jwt.sign(
+          { userId: this.lastID, email: email },
+          "key_secret"
+        );
 
         return res.status(200).send({
           status: 200,
@@ -179,11 +182,14 @@ const handleError = (err) => {
 const auth = (email, password, res) => {
   db.serialize(() => {
     db.get(
-      `SELECT UserId FROM Users WHERE Email="${email}" AND Password="${password}"`,
+      `SELECT UserId, Email FROM Users WHERE Email="${email}" AND Password="${password}"`,
       [],
       (err, row) => {
         if (row) {
-          const token = jwt.sign(row.UserId, "key_secret");
+          const token = jwt.sign(
+            { userId: row.UserId, email: row.Email },
+            "key_secret"
+          );
           return res.status(200).send({
             status: 200,
             message: "ok",
@@ -253,10 +259,6 @@ app.use(cors());
 
 const upload = multer({ storage: storage });
 
-app.get("/", function requestHandler(req, res) {
-  res.send("Hello, World!");
-});
-
 app.post("/signup", function (req, res) {
   const { email, password } = req.body;
 
@@ -270,7 +272,7 @@ app.post("/signin", function (req, res) {
 });
 
 app.get("/contacts", verifyToken, function (req, res) {
-  getContacts(req.user).then((results) => res.send({ results }));
+  getContacts(req.user.userId).then((results) => res.send({ results }));
 });
 
 app.post(
@@ -302,6 +304,10 @@ app.put("/favourites/:id", verifyToken, (req, res) => {
   const { favourite } = req.body;
 
   updateFavourite(id, req.user, favourite, res);
+});
+
+app.get("/user", verifyToken, (req, res) => {
+  res.send(req.user.email);
 });
 
 const server = app.listen(4000);
