@@ -55,38 +55,66 @@ const createUser = (email, password, res) => {
   });
 };
 
-const createContact = (name, phone, photograph, userId, res) => {
-  bucket
-    .upload(photograph.path, {
-      destination: Date.now() + "-" + photograph.filename,
-    })
-    .then(([_, { mediaLink }]) => {
-      db.serialize(() => {
-        db.run(
-          "INSERT INTO Contacts(Name, Phone, Photograph, UserId, Favourite) VALUES (?, ?, ?, ?, ?)",
-          [name, phone, mediaLink, parseInt(userId), 0],
-          function (err, row) {
-            if (err) {
-              return res.status(500).send({
-                status: 500,
-                message: "something went wrong",
-                data: {},
+const createContact = (name, phone, photograph = null, userId, res) => {
+  if (photograph) {
+    bucket
+      .upload(photograph.path, {
+        destination: Date.now() + "-" + photograph.filename,
+      })
+      .then(([_, { mediaLink }]) => {
+        db.serialize(() => {
+          db.run(
+            "INSERT INTO Contacts(Name, Phone, Photograph, UserId, Favourite) VALUES (?, ?, ?, ?, ?)",
+            [name, phone, mediaLink, parseInt(userId), 0],
+            function (err, row) {
+              if (err) {
+                return res.status(500).send({
+                  status: 500,
+                  message: "something went wrong",
+                  data: {},
+                });
+              }
+              return res.status(200).send({
+                status: 200,
+                message: "ok",
+                data: {
+                  name,
+                  phone,
+                  photograph: mediaLink,
+                  contactId: this.lastID,
+                },
               });
             }
-            return res.status(200).send({
-              status: 200,
-              message: "ok",
-              data: {
-                name,
-                phone,
-                photograph: mediaLink,
-                contactId: this.lastID,
-              },
+          );
+        });
+      });
+  } else {
+    db.serialize(() => {
+      db.run(
+        "INSERT INTO Contacts(Name, Phone, Photograph, UserId, Favourite) VALUES (?, ?, ?, ?, ?)",
+        [name, phone, photograph, parseInt(userId), 0],
+        function (err, row) {
+          if (err) {
+            return res.status(500).send({
+              status: 500,
+              message: "something went wrong",
+              data: {},
             });
           }
-        );
-      });
+          return res.status(200).send({
+            status: 200,
+            message: "ok",
+            data: {
+              name,
+              phone,
+              photograph,
+              contactId: this.lastID,
+            },
+          });
+        }
+      );
     });
+  }
 };
 
 const deleteContact = (contactId, user, res) => {
@@ -282,32 +310,32 @@ app.post(
   function (req, res) {
     const { name, phone } = req.body;
     const photograph = req.file;
-    createContact(name, phone, photograph, req.user, res);
+    createContact(name, phone, photograph, req.user.userId, res);
   }
 );
 
 app.delete("/contacts/:id", verifyToken, (req, res) => {
   const { id } = req.params;
 
-  deleteContact(id, req.user, res);
+  deleteContact(id, req.user.userId, res);
 });
 
 app.put("/contacts/:id", verifyToken, upload.single("images"), (req, res) => {
   const { id } = req.params;
   const photograph = req.file;
 
-  updateContact(id, req.user, { ...req.body, photograph }, res);
+  updateContact(id, req.user.userId, { ...req.body, photograph }, res);
 });
 
 app.put("/favourites/:id", verifyToken, (req, res) => {
   const { id } = req.params;
   const { favourite } = req.body;
 
-  updateFavourite(id, req.user, favourite, res);
+  updateFavourite(id, req.user.userId, favourite, res);
 });
 
 app.get("/user", verifyToken, (req, res) => {
   res.send(req.user.email);
 });
 
-const server = app.listen(4000);
+const server = app.listen(process.env.PORT || 4000);
